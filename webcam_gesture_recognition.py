@@ -21,10 +21,10 @@ class HandGestureRecognizer:
         
         # Game control mappings
         self.control_map = {
-            "Gesture_1": "UP",     # index 1
-            "Gesture_2": "DOWN",   # index 2
-            "Gesture_3": "LEFT",   # index 3
-            "Gesture_4": "RIGHT",  # index 4
+            "Gesture_5": "UP",     # index 1
+            "Gesture_13": "DOWN",   # index 2
+            "Gesture_6": "LEFT",   # index 3
+            "Gesture_2": "RIGHT",  # index 4
         }
         
         # Initialize prediction history for smoothing
