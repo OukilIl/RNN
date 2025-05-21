@@ -34,19 +34,30 @@ class HandGestureRecognizer:
         self.last_prediction_time = time.time()
         self.cooldown = 0.5  # seconds between predictions
         
-        # Initialize background subtractor
-        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=150, varThreshold=50, detectShadows=False)
+        # Initialize background subtractor with less aggressive parameters
+        # Reduced history, lower threshold for more sensitivity
+        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
         self.bg_initialized = False
         self.frames_for_bg = 30  # Number of frames to build background model
         self.frame_count = 0
         
-        # Parameters for skin color detection
+        # Parameters for skin color detection - wider range for better detection
         self.use_skin_detection = True
-        self.min_YCrCb = np.array([0, 135, 85], np.uint8)
-        self.max_YCrCb = np.array([255, 180, 135], np.uint8)
+        
+        # HSV color space parameters for skin detection (provides better results for a variety of skin tones)
+        self.use_hsv = True
+        self.min_HSV = np.array([0, 20, 70], np.uint8)
+        self.max_HSV = np.array([25, 255, 255], np.uint8)
+        
+        # YCrCb parameters (fallback)
+        self.min_YCrCb = np.array([0, 130, 75], np.uint8)
+        self.max_YCrCb = np.array([255, 185, 140], np.uint8)
+        
+        # Contour filtering settings
+        self.min_contour_area = 3000  # Minimum area to consider as a hand
         
     def remove_background(self, frame):
-        """Remove background from input frame"""
+        """Remove background from input frame with improved hand detection"""
         # Apply background subtraction
         fg_mask = self.bg_subtractor.apply(frame)
         
@@ -58,38 +69,97 @@ class HandGestureRecognizer:
                 print("Background model initialized")
             return frame  # Return original frame during initialization
         
-        # Apply morphological operations to clean up mask
-        kernel = np.ones((5, 5), np.uint8)
+        # Apply morphological operations to clean up mask - gentler to preserve detail
+        kernel = np.ones((3, 3), np.uint8)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
         
         # Create a copy of the original frame
         processed_frame = frame.copy()
         
         # Apply skin color detection if enabled
         if self.use_skin_detection:
-            # Convert to YCrCb color space 
-            frame_YCrCb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+            if self.use_hsv:
+                # Convert to HSV color space for better skin tone range detection
+                frame_HSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                skin_mask = cv2.inRange(frame_HSV, self.min_HSV, self.max_HSV)
+                
+                # Second range for handling red hues (HSV wraps around for red)
+                lower_red = np.array([170, 20, 70], np.uint8)
+                upper_red = np.array([180, 255, 255], np.uint8)
+                skin_mask2 = cv2.inRange(frame_HSV, lower_red, upper_red)
+                
+                # Combine the two skin masks
+                skin_mask = cv2.bitwise_or(skin_mask, skin_mask2)
+            else:
+                # Use YCrCb as fallback
+                frame_YCrCb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+                skin_mask = cv2.inRange(frame_YCrCb, self.min_YCrCb, self.max_YCrCb)
             
-            # Find skin pixels
-            skin_mask = cv2.inRange(frame_YCrCb, self.min_YCrCb, self.max_YCrCb)
+            # Apply gentle morphological operations to clean up skin mask
+            skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+            skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
             
-            # Combine skin mask with foreground mask for better hand detection
-            combined_mask = cv2.bitwise_and(fg_mask, skin_mask)
+            # Create a combined mask:
+            # 1. More weight to skin detection for focused hand detection
+            # 2. Less weight to background subtraction to avoid losing hand details
+            combined_mask = cv2.bitwise_or(skin_mask, fg_mask)
             
-            # Apply morphological operations to clean up skin mask
-            combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-            combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-            
-            # Apply combined mask
+            # Apply the combined mask to the original frame
             processed_frame = cv2.bitwise_and(frame, frame, mask=combined_mask)
+            
+            # Find contours to isolate the hand
+            contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # If contours are found, focus on the largest one (likely the hand)
+            if contours:
+                # Sort contours by area (descending)
+                contours = sorted(contours, key=cv2.contourArea, reverse=True)
+                
+                # Filter out small contours that are unlikely to be a hand
+                large_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > self.min_contour_area]
+                
+                if large_contours:
+                    # Create a mask with only the largest contour(s)
+                    hand_mask = np.zeros_like(combined_mask)
+                    cv2.drawContours(hand_mask, [large_contours[0]], -1, 255, -1)
+                    
+                    # If multiple large contours are close together, they might be part of the same hand
+                    if len(large_contours) > 1:
+                        for cnt in large_contours[1:3]:  # Consider next 2 largest contours
+                            # Get the distance between contours
+                            M1 = cv2.moments(large_contours[0])
+                            if M1['m00'] != 0:
+                                cx1 = int(M1['m10']/M1['m00'])
+                                cy1 = int(M1['m01']/M1['m00'])
+                                
+                                M2 = cv2.moments(cnt)
+                                if M2['m00'] != 0:
+                                    cx2 = int(M2['m10']/M2['m00'])
+                                    cy2 = int(M2['m01']/M2['m00'])
+                                    
+                                    # If centers are close, add to the mask
+                                    dist = np.sqrt((cx1-cx2)**2 + (cy1-cy2)**2)
+                                    if dist < 100:  # Threshold for closeness
+                                        cv2.drawContours(hand_mask, [cnt], -1, 255, -1)
+                    
+                    # Dilate the hand mask slightly to ensure we get the full hand
+                    hand_mask = cv2.dilate(hand_mask, kernel, iterations=2)
+                    
+                    # Apply the hand mask to the original frame
+                    processed_frame = cv2.bitwise_and(frame, frame, mask=hand_mask)
+                    
+                    # Optional: Draw a rectangle around the hand contour
+                    # x, y, w, h = cv2.boundingRect(large_contours[0])
+                    # cv2.rectangle(processed_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
         else:
-            # Apply foreground mask only
+            # Apply foreground mask only if skin detection is disabled
             processed_frame = cv2.bitwise_and(frame, frame, mask=fg_mask)
         
         # Debug - show mask in corner (uncomment if needed)
-        # h, w = frame.shape[:2]
-        # frame[h-100:h, w-100:w] = cv2.resize(cv2.cvtColor(fg_mask, cv2.COLOR_GRAY2BGR), (100, 100))
+        h, w = frame.shape[:2]
+        small_mask = cv2.resize(cv2.cvtColor(fg_mask, cv2.COLOR_GRAY2BGR), (80, 80))
+        processed_frame[h-80:h, w-80:w] = small_mask
         
         return processed_frame
         
@@ -217,6 +287,8 @@ class HandGestureRecognizer:
         
         print("Webcam started. Press 'q' to quit.")
         print("Initializing background model, please keep the background clear...")
+        print("Press 's' to toggle skin detection method (HSV/YCrCb)")
+        print("Press 'b' to reset background model")
         
         while True:
             # Read a frame from the webcam
@@ -242,12 +314,12 @@ class HandGestureRecognizer:
             if key == ord('q'):
                 break
             elif key == ord('s'):
-                # Toggle skin detection
-                self.use_skin_detection = not self.use_skin_detection
-                print(f"Skin detection: {'ON' if self.use_skin_detection else 'OFF'}")
+                # Toggle skin detection method
+                self.use_hsv = not self.use_hsv
+                print(f"Using {'HSV' if self.use_hsv else 'YCrCb'} color space for skin detection")
             elif key == ord('b'):
                 # Reset background model
-                self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=150, varThreshold=50, detectShadows=False)
+                self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
                 self.bg_initialized = False
                 self.frame_count = 0
                 print("Resetting background model...")
