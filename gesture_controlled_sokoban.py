@@ -2,6 +2,7 @@ import pygame
 import cv2
 import sys
 import numpy as np
+import time  # Add time module for cooldown tracking
 from sokoban_game import SokobanGame, TILE_SIZE
 from webcam_gesture_recognition import HandGestureRecognizer
 
@@ -20,13 +21,17 @@ TEXT_COLOR = (220, 220, 220)
 PANEL_COLOR = (60, 60, 60)
 BORDER_COLOR = (100, 100, 100)
 
+# Gesture cooldown settings
+SAME_MOVEMENT_COOLDOWN = 1.0  # 1 second cooldown for same movement
+DIFFERENT_MOVEMENT_COOLDOWN = 0.6  # 0.6 second cooldown for different movements
+
 def main():
     # Initialize the Sokoban game
     game = SokobanGame()
     
     # Calculate display dimensions based on the game size
-    game_width = len(game.level[0]) * TILE_SIZE
-    game_height = len(game.level) * TILE_SIZE
+    game_width = game.width
+    game_height = game.height
     
     # Make the screen size proportional to game size with enough space for UI elements
     screen_width = game_width + CAMERA_WIDTH + 3*PADDING
@@ -35,6 +40,9 @@ def main():
     # Initialize screen
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Hand Gesture Controlled Sokoban")
+    
+    # Set the game's screen reference
+    game.screen = pygame.Surface((game_width, game_height))
     
     # Initialize the hand gesture recognizer
     try:
@@ -57,6 +65,10 @@ def main():
     title_font = pygame.font.SysFont(None, 28)
     info_font = pygame.font.SysFont(None, 24)
     
+    # Movement cooldown tracking
+    last_movement_time = 0
+    last_movement = None
+    
     # Main game loop
     running = True
     while running:
@@ -78,6 +90,13 @@ def main():
                     game.reset_level()
                 elif event.key == pygame.K_n and game.is_completed:
                     game.next_level()
+                    # Update game surface for new level size
+                    game_width = game.width
+                    game_height = game.height
+                    screen_width = game_width + CAMERA_WIDTH + 3*PADDING
+                    screen_height = max(game_height, CAMERA_HEIGHT + INFO_HEIGHT + 2*PADDING) + PADDING
+                    screen = pygame.display.set_mode((screen_width, screen_height))
+                    game.screen = pygame.Surface((game_width, game_height))
                 elif event.key == pygame.K_ESCAPE:
                     running = False
         
@@ -98,17 +117,35 @@ def main():
                 # Update text
                 gesture_text = f"{label} ({confidence:.2f})"
                 
-                # Apply game control if a gesture is detected
+                # Apply game control if a gesture is detected with cooldown
                 if game_control:
-                    control_text = f"{game_control}"
-                    if game_control == "UP":
-                        game.move_player(0, -1)
-                    elif game_control == "DOWN":
-                        game.move_player(0, 1)
-                    elif game_control == "LEFT":
-                        game.move_player(-1, 0)
-                    elif game_control == "RIGHT":
-                        game.move_player(1, 0)
+                    current_time = time.time()
+                    
+                    # Determine cooldown period based on if it's the same movement or different
+                    if game_control == last_movement:
+                        required_cooldown = SAME_MOVEMENT_COOLDOWN
+                    else:
+                        required_cooldown = DIFFERENT_MOVEMENT_COOLDOWN
+                    
+                    # Check if enough time has passed
+                    if current_time - last_movement_time >= required_cooldown:
+                        control_text = f"{game_control}"
+                        if game_control == "UP":
+                            game.move_player(0, -1)
+                        elif game_control == "DOWN":
+                            game.move_player(0, 1)
+                        elif game_control == "LEFT":
+                            game.move_player(-1, 0)
+                        elif game_control == "RIGHT":
+                            game.move_player(1, 0)
+                        
+                        # Update last movement tracking
+                        last_movement_time = current_time
+                        last_movement = game_control
+                    else:
+                        # Show cooldown message
+                        remaining = required_cooldown - (current_time - last_movement_time)
+                        control_text = f"Cooldown: {remaining:.1f}s"
                 
                 # Convert frame to Pygame surface for display
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -134,9 +171,8 @@ def main():
         
         # Draw game to its own surface
         game_surface = pygame.Surface((game_width, game_height))
-        game.screen = game_surface  # Temporarily override game's screen
+        game.screen = game_surface  # Set game's drawing surface
         game.draw()
-        game.screen = screen  # Restore original screen
         
         # Create a background panel for the game
         pygame.draw.rect(

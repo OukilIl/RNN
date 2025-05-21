@@ -41,30 +41,25 @@ LEVELS = [
         "##########"
     ],
     [
-        "############",
-        "#          #",
-        "#  #  ###  #",
-        "#  # BP    #",
-        "#  # B###  #",
-        "#  ###     #",
-        "#    T     #",
-        "#    T     #",
-        "#    T     #",
-        "#          #",
-        "############"
+        "################",
+        "#     ###      #",
+        "#     # P      #",
+        "#     # B      #",
+        "#     ###      #",
+        "#              #",
+        "#              #",
+        "# TTT          #",
+        "#              #",
+        "################"
     ],
     [
-        "##############",
-        "#            #",
-        "#  TTTTT     #",
-        "#            #",
-        "#  #####     #",
-        "#            #",
-        "#  BBBBB     #",
-        "#            #",
-        "#     P      #",
-        "#            #",
-        "##############"
+        "####################",
+        "#                  #",
+        "# TTTTT            #",
+        "# #####            #",
+        "# BBBBB      P     #",
+        "#                  #",
+        "####################"
     ]
 ]
 
@@ -73,11 +68,10 @@ class SokobanGame:
         self.level_idx = level_idx
         self.load_level(level_idx)
         
-        # Set up the display
+        # Set up the display dimensions
         self.width = len(self.level[0]) * TILE_SIZE
         self.height = len(self.level) * TILE_SIZE
-        self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption(GAME_TITLE)
+        self.screen = None  # Will be set externally
         
         # Set up the clock
         self.clock = pygame.time.Clock()
@@ -283,10 +277,9 @@ class SokobanGame:
             self.moves = 0
             self.is_completed = False
             
-            # Resize the screen for the new level
+            # Update dimensions for the new level
             self.width = len(self.level[0]) * TILE_SIZE
             self.height = len(self.level) * TILE_SIZE
-            self.screen = pygame.display.set_mode((self.width, self.height))
         else:
             print("You've completed all levels!")
     
