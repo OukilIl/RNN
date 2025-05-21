@@ -5,6 +5,9 @@ from tensorflow import keras
 from keras.models import load_model
 import time
 
+# Constants
+CONFIDENCE_THRESHOLD = 0.7  # Only register gestures with at least 70% confidence
+
 class HandGestureRecognizer:
     def __init__(self, model_path, img_size=(128, 128)):
         # Load the trained model
@@ -203,9 +206,13 @@ class HandGestureRecognizer:
         from collections import Counter
         most_common = Counter(self.history).most_common(1)[0][0]
         
-        # Get the label and game control (if applicable)
+        # Get the label
         label = self.labels[most_common]
-        game_control = self.control_map.get(label, None)
+        
+        # Get the game control (if applicable and confidence is above threshold)
+        game_control = None
+        if confidence >= CONFIDENCE_THRESHOLD:
+            game_control = self.control_map.get(label, None)
         
         # Limit prediction frequency to reduce flickering
         current_time = time.time()
@@ -239,8 +246,19 @@ class HandGestureRecognizer:
             (10, 30), 
             cv2.FONT_HERSHEY_SIMPLEX, 
             0.8, 
-            (0, 255, 0), 
+            (0, 255, 0) if confidence >= CONFIDENCE_THRESHOLD else (0, 165, 255), 
             2
+        )
+        
+        # Add text for confidence threshold
+        cv2.putText(
+            composite,
+            f"Threshold: {CONFIDENCE_THRESHOLD:.2f}",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            1
         )
         
         # Add text for the game control (if applicable)
@@ -248,7 +266,7 @@ class HandGestureRecognizer:
             cv2.putText(
                 composite, 
                 f"Game Control: {game_control}", 
-                (10, 70), 
+                (10, 90), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
                 0.8, 
                 (0, 0, 255), 
@@ -289,6 +307,7 @@ class HandGestureRecognizer:
         print("Initializing background model, please keep the background clear...")
         print("Press 's' to toggle skin detection method (HSV/YCrCb)")
         print("Press 'b' to reset background model")
+        print(f"Confidence threshold: {CONFIDENCE_THRESHOLD:.2f} - gestures below this won't trigger controls")
         
         while True:
             # Read a frame from the webcam
