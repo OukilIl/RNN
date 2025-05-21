@@ -20,6 +20,7 @@ BG_COLOR = (40, 40, 40)
 TEXT_COLOR = (220, 220, 220)
 PANEL_COLOR = (60, 60, 60)
 BORDER_COLOR = (100, 100, 100)
+SHOW_PROCESSED_FRAME = True  # Toggle for showing processed or original frame
 
 # Gesture cooldown settings
 SAME_MOVEMENT_COOLDOWN = 1.0  # 1 second cooldown for same movement
@@ -69,6 +70,9 @@ def main():
     last_movement_time = 0
     last_movement = None
     
+    # Global variable for toggling the processed/original frame display
+    show_processed = SHOW_PROCESSED_FRAME
+    
     # Main game loop
     running = True
     while running:
@@ -97,6 +101,21 @@ def main():
                     screen_height = max(game_height, CAMERA_HEIGHT + INFO_HEIGHT + 2*PADDING) + PADDING
                     screen = pygame.display.set_mode((screen_width, screen_height))
                     game.screen = pygame.Surface((game_width, game_height))
+                elif event.key == pygame.K_p:
+                    # Toggle between processed and original frame
+                    show_processed = not show_processed
+                elif event.key == pygame.K_s:
+                    # Toggle skin detection if recognizer is available
+                    if recognizer:
+                        recognizer.use_skin_detection = not recognizer.use_skin_detection
+                        print(f"Skin detection: {'ON' if recognizer.use_skin_detection else 'OFF'}")
+                elif event.key == pygame.K_b:
+                    # Reset background model if recognizer is available
+                    if recognizer:
+                        recognizer.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=150, varThreshold=50, detectShadows=False)
+                        recognizer.bg_initialized = False
+                        recognizer.frame_count = 0
+                        print("Resetting background model...")
                 elif event.key == pygame.K_ESCAPE:
                     running = False
         
@@ -110,6 +129,9 @@ def main():
             if ret:
                 # Mirror the frame for more intuitive interaction
                 frame = cv2.flip(frame, 1)
+                
+                # Get the processed frame with background removal
+                processed_frame = recognizer.remove_background(frame)
                 
                 # Make a prediction
                 label, confidence, game_control = recognizer.predict(frame)
@@ -147,8 +169,23 @@ def main():
                         remaining = required_cooldown - (current_time - last_movement_time)
                         control_text = f"Cooldown: {remaining:.1f}s"
                 
+                # Choose which frame to display based on the toggle
+                display_frame = processed_frame if show_processed else frame
+                
+                # Add a label to indicate which frame is being shown
+                display_label = "Processed" if show_processed else "Original"
+                cv2.putText(
+                    display_frame,
+                    display_label,
+                    (10, display_frame.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1
+                )
+                
                 # Convert frame to Pygame surface for display
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
                 frame_rgb = cv2.resize(frame_rgb, (CAMERA_WIDTH, CAMERA_HEIGHT))
                 camera_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
             else:
@@ -196,7 +233,10 @@ def main():
         )
         
         # Draw camera title
-        camera_title = title_font.render("Camera Feed", True, TEXT_COLOR)
+        if show_processed:
+            camera_title = title_font.render("Camera Feed (Processed)", True, TEXT_COLOR)
+        else:
+            camera_title = title_font.render("Camera Feed (Original)", True, TEXT_COLOR)
         screen.blit(camera_title, (right_panel_x + (right_panel_width - camera_title.get_width()) // 2, PADDING + 10))
         
         # Draw webcam feed with a border
@@ -243,7 +283,7 @@ def main():
         )
         
         # Draw controls help
-        help_text = "Arrow keys: Move | R: Reset | N: Next level | ESC: Quit"
+        help_text = "Arrow keys: Move | P: Toggle processed | S: Skin detection | B: Reset BG | R: Reset | N: Next | ESC: Quit"
         controls_surf = info_font.render(help_text, True, TEXT_COLOR)
         controls_x = (screen_width - controls_surf.get_width()) // 2
         screen.blit(controls_surf, (controls_x, help_panel_y + 10))
