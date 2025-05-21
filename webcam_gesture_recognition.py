@@ -13,18 +13,18 @@ class HandGestureRecognizer:
         
         # Class labels (according to the dataset)
         self.labels = [
-            "Gesture_1", "Gesture_2", "Gesture_3", "Gesture_4", 
-            "Gesture_5", "Gesture_6", "Gesture_7", "Gesture_8", 
-            "Gesture_9", "Gesture_10", "Gesture_11", "Gesture_12", 
-            "Gesture_13", "Gesture_14"
+            "Gesture_0", "Gesture_1", "Gesture_2", "Gesture_3", 
+            "Gesture_4", "Gesture_5", "Gesture_6", "Gesture_7", 
+            "Gesture_8", "Gesture_9", "Gesture_10", "Gesture_11", 
+            "Gesture_12", "Gesture_13"
         ]
         
         # Game control mappings
         self.control_map = {
-            "Gesture_2": "UP",     # index 2
-            "Gesture_3": "DOWN",   # index 3
-            "Gesture_4": "LEFT",   # index 4
-            "Gesture_5": "RIGHT",  # index 5
+            "Gesture_1": "UP",     # index 1
+            "Gesture_2": "DOWN",   # index 2
+            "Gesture_3": "LEFT",   # index 3
+            "Gesture_4": "RIGHT",  # index 4
         }
         
         # Initialize prediction history for smoothing

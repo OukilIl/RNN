@@ -21,13 +21,13 @@ IMG_WIDTH = 128
 IMG_HEIGHT = 128
 NUM_CLASSES = 14
 BATCH_SIZE = 32
-EPOCHS = 20
+EPOCHS = 30
 
 # Gesture mappings for the game
-GESTURE_UP = 2      # HandGesture3 (label 2)
-GESTURE_DOWN = 3    # HandGesture4 (label 3)
-GESTURE_LEFT = 4    # HandGesture5 (label 4)
-GESTURE_RIGHT = 5   # HandGesture6 (label 5)
+GESTURE_UP = 1      # HandGesture2 (label 1)
+GESTURE_DOWN = 2    # HandGesture3 (label 2)
+GESTURE_LEFT = 3    # HandGesture4 (label 3)
+GESTURE_RIGHT = 4   # HandGesture5 (label 4)
 
 # Disable mixed precision on CPU
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -60,7 +60,8 @@ def load_data(dataset_path):
             continue
 
         try:
-            label = int(gesture_folder_name.split('_')[1]) - 1  # Labels start from 0
+            # Directly use the number from the folder name - no need to subtract 1
+            label = int(gesture_folder_name.split('_')[1])  # Labels start from 0 in the dataset
         except (IndexError, ValueError):
             print(f"Warning: Could not parse label from folder name {gesture_folder_name}. Skipping.")
             continue
